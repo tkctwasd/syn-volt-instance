@@ -35,11 +35,47 @@ local global_container
 do
 	local filename = "UniversalMethodFinder"
 
-	local finder
-	finder, global_container = loadstring(
-		game:HttpGet("https://raw.githubusercontent.com/luau/SomeHub/main/" .. filename .. ".luau", true),
-		filename
-	)()
+	-- Local replacement: upstream luau/SomeHub/UniversalMethodFinder now returns 404
+	global_container = {}
+	local function finder(patterns)
+		local env = (getgenv and getgenv()) or getfenv(0)
+		for name, test in patterns do
+			if type(env[name]) == "function" then
+				global_container[name] = env[name]
+				continue
+			end
+			local pred = loadstring(string.find(test, "return", nil, true) and test or ("return " .. test))
+			if not pred then
+				continue
+			end
+			local function check(key, value, parent)
+				if type(key) == "string" and type(value) == "function" then
+					local ok, res = pcall(pred, key, parent)
+					if ok and res then
+						global_container[name] = value
+						return true
+					end
+				end
+			end
+			for key, value in env do
+				if check(key, value, nil) then
+					break
+				end
+				if type(value) == "table" and global_container[name] == nil then
+					local ok = pcall(function()
+						for k2, v2 in value do
+							if check(k2, v2, key) then
+								break
+							end
+						end
+					end)
+				end
+				if global_container[name] then
+					break
+				end
+			end
+		end
+	end
 
 	finder({
 		-- readbinarystring = 'string.find(...,"bin",nil,true)', -- ! Could match some unwanted stuff (getbinaryindex)
